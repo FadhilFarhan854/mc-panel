@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { execSync } from 'node:child_process'
+import AdmZip from 'adm-zip'
 
 export const runtime = 'nodejs'
 
@@ -103,10 +103,22 @@ function findManifest(dir: string): ManifestHeader | null {
     const full = path.join(dir, entry.name)
     if (entry.isFile() && entry.name === 'manifest.json') {
       try {
-        const data = JSON.parse(fs.readFileSync(full, 'utf8'))
-        if (data?.header?.uuid && Array.isArray(data.header.version)) {
-          return data.header as ManifestHeader
+        // Strip BOM if present
+        let raw = fs.readFileSync(full, 'utf8')
+        if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1)
+        const data = JSON.parse(raw)
+        const h = data?.header
+        if (!h?.uuid) continue
+        // Accept version as array OR string (normalize to array)
+        let version: number[]
+        if (Array.isArray(h.version)) {
+          version = h.version
+        } else if (typeof h.version === 'string') {
+          version = h.version.split('.').map(Number)
+        } else {
+          version = [1, 0, 0]
         }
+        return { uuid: String(h.uuid), version, name: h.name }
       } catch { /* skip invalid */ }
     }
     if (entry.isDirectory()) {
@@ -117,7 +129,33 @@ function findManifest(dir: string): ManifestHeader | null {
   return null
 }
 
+/** List all files (relative paths) inside a directory recursively, for diagnostics */
+function listFilesRecursive(dir: string, base = ''): string[] {
+  if (!fs.existsSync(dir)) return []
+  const result: string[] = []
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${entry.name}` : entry.name
+    if (entry.isDirectory()) result.push(...listFilesRecursive(path.join(dir, entry.name), rel))
+    else result.push(rel)
+  }
+  return result
+}
+
 // ── Extraction helpers ───────────────────────────────────────────────────
+
+/** Extract a ZIP buffer into a directory using adm-zip. */
+function extractZipToDir(zipPath: string, destDir: string): void {
+  const zip = new AdmZip(zipPath)
+  zip.extractAllTo(destDir, true)
+}
+
+/** Collect all .mcpack entries from an already-opened AdmZip. */
+function collectMcpackBuffers(zip: AdmZip): { name: string; buffer: Buffer }[] {
+  return zip
+    .getEntries()
+    .filter((e) => !e.isDirectory && e.entryName.toLowerCase().endsWith('.mcpack'))
+    .map((e) => ({ name: path.basename(e.entryName), buffer: e.getData() }))
+}
 
 /**
  * Handle one uploaded file (.mcpack or .mcaddon).
@@ -133,67 +171,59 @@ function extractUpload(
   const results: { folder: string; manifest: ManifestHeader }[] = []
 
   if (originalName.toLowerCase().endsWith('.mcaddon')) {
-    // Extract the .mcaddon wrapper to a temp dir, then find inner .mcpack files
-    const tmpDir = path.join(packsDir, `__tmp_${Date.now()}`)
-    try {
-      fs.mkdirSync(tmpDir, { recursive: true })
-      execSync(`unzip -o -q "${uploadedPath}" -d "${tmpDir}"`)
+    const outerZip = new AdmZip(uploadedPath)
+    const innerPacks = collectMcpackBuffers(outerZip)
 
-      // Find all .mcpack files inside (may be nested)
-      const mcpacks = findMcpackFiles(tmpDir)
-
-      if (mcpacks.length === 0) {
-        // No inner .mcpack — treat the whole extracted content as one pack
+    if (innerPacks.length === 0) {
+      // No inner .mcpack — treat the whole extracted content as one pack
+      const tmpDir = path.join(packsDir, `__tmp_${Date.now()}`)
+      try {
+        fs.mkdirSync(tmpDir, { recursive: true })
+        outerZip.extractAllTo(tmpDir, true)
         const manifest = findManifest(tmpDir)
         if (manifest) {
-          const folderName = manifest.name
-            ? sanitizeFolderName(manifest.name)
-            : baseName
+          const folderName = manifest.name ? sanitizeFolderName(manifest.name) : baseName
           const dest = path.join(packsDir, folderName)
           if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true })
           fs.renameSync(tmpDir, dest)
           results.push({ folder: folderName, manifest })
           return results
         }
-        // tmpDir cleanup happens in finally
-      } else {
-        for (const mcpackPath of mcpacks) {
-          const innerBase = path.basename(mcpackPath, '.mcpack')
-          const innerDir = path.join(packsDir, `__inner_${Date.now()}_${innerBase}`)
-          try {
-            fs.mkdirSync(innerDir, { recursive: true })
-            execSync(`unzip -o -q "${mcpackPath}" -d "${innerDir}"`)
-            const manifest = findManifest(innerDir)
-            if (manifest) {
-              const folderName = manifest.name
-                ? sanitizeFolderName(manifest.name)
-                : innerBase
-              const dest = path.join(packsDir, folderName)
-              if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true })
-              fs.renameSync(innerDir, dest)
-              results.push({ folder: folderName, manifest })
-            } else {
-              if (fs.existsSync(innerDir)) fs.rmSync(innerDir, { recursive: true, force: true })
-            }
-          } catch {
-            if (fs.existsSync(innerDir)) fs.rmSync(innerDir, { recursive: true, force: true })
+      } finally {
+        if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    } else {
+      for (const { name, buffer } of innerPacks) {
+        const innerBase = name.replace(/\.mcpack$/i, '')
+        const innerDir = path.join(packsDir, `__inner_${Date.now()}_${innerBase}`)
+        try {
+          fs.mkdirSync(innerDir, { recursive: true })
+          const innerZip = new AdmZip(buffer)
+          innerZip.extractAllTo(innerDir, true)
+          const manifest = findManifest(innerDir)
+          if (manifest) {
+            const folderName = manifest.name ? sanitizeFolderName(manifest.name) : innerBase
+            const dest = path.join(packsDir, folderName)
+            if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true })
+            fs.renameSync(innerDir, dest)
+            results.push({ folder: folderName, manifest })
+          } else {
+            fs.rmSync(innerDir, { recursive: true, force: true })
           }
+        } catch {
+          if (fs.existsSync(innerDir)) fs.rmSync(innerDir, { recursive: true, force: true })
         }
       }
-    } finally {
-      if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true })
     }
   } else {
     // Plain .mcpack — extract directly
     const tmpDir = path.join(packsDir, `__tmp_${Date.now()}`)
     try {
       fs.mkdirSync(tmpDir, { recursive: true })
-      execSync(`unzip -o -q "${uploadedPath}" -d "${tmpDir}"`)
+      extractZipToDir(uploadedPath, tmpDir)
       const manifest = findManifest(tmpDir)
       if (manifest) {
-        const folderName = manifest.name
-          ? sanitizeFolderName(manifest.name)
-          : baseName
+        const folderName = manifest.name ? sanitizeFolderName(manifest.name) : baseName
         const dest = path.join(packsDir, folderName)
         if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true })
         fs.renameSync(tmpDir, dest)
@@ -201,24 +231,12 @@ function extractUpload(
       } else {
         fs.rmSync(tmpDir, { recursive: true, force: true })
       }
-    } catch {
+    } catch (err) {
       if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true })
+      throw err
     }
   }
 
-  return results
-}
-
-function findMcpackFiles(dir: string): string[] {
-  const results: string[] = []
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isFile() && entry.name.toLowerCase().endsWith('.mcpack')) {
-      results.push(full)
-    } else if (entry.isDirectory()) {
-      results.push(...findMcpackFiles(full))
-    }
-  }
   return results
 }
 
@@ -296,8 +314,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (extracted.length === 0) {
+    // Diagnostic: try to list what was extracted from the temp dir for debugging
+    const diagDir = path.join(dir, '__diag_last')
+    let diagFiles: string[] = []
+    try {
+      fs.mkdirSync(diagDir, { recursive: true })
+      const zip = new AdmZip(Buffer.from(await (file as File).arrayBuffer()))
+      zip.extractAllTo(diagDir, true)
+      diagFiles = listFilesRecursive(diagDir)
+    } catch { /* ignore */ } finally {
+      if (fs.existsSync(diagDir)) fs.rmSync(diagDir, { recursive: true, force: true })
+    }
+    const detail = diagFiles.length > 0
+      ? ` Files found: ${diagFiles.slice(0, 20).join(', ')}`
+      : ' No files could be extracted.'
     return Response.json(
-      { success: false, message: 'Invalid pack: no manifest.json with uuid/version found inside the file' },
+      { success: false, message: `Invalid pack: no manifest.json with uuid/version found inside the file.${detail}` },
       { status: 400 }
     )
   }
