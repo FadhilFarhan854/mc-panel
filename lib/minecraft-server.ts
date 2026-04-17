@@ -61,6 +61,30 @@ export function addLogListener(fn: (line: string) => void): () => void {
   }
 }
 
+/**
+ * After a Bedrock server comes online, apply gamerules that are defined
+ * in server.properties but only take effect on existing worlds via command.
+ * Currently handles: show-coordinates
+ */
+function applyBedrockDefaults(serverDir: string): void {
+  const propsPath = path.join(serverDir, 'server.properties')
+  if (!fs.existsSync(propsPath)) return
+
+  const content = fs.readFileSync(propsPath, 'utf8')
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('show-coordinates=')) {
+      const value = trimmed.substring('show-coordinates='.length).trim()
+      // Small delay to ensure the server is fully ready to accept commands
+      setTimeout(() => {
+        safeWrite(`gamerule showcoordinates ${value === 'true' ? 'true' : 'false'}\n`)
+        addLog(`[Panel] Applied gamerule showcoordinates ${value === 'true' ? 'true' : 'false'}`)
+      }, 3000)
+      break
+    }
+  }
+}
+
 export function startServer(): { success: boolean; message: string } {
   if (state.status !== 'offline') {
     return { success: false, message: `Server is already ${state.status}` }
@@ -109,7 +133,10 @@ export function startServer(): { success: boolean; message: string } {
         type === 'bedrock'
           ? trimmed.includes('Server started.')
           : trimmed.includes('Done (') && trimmed.includes('For help')
-      if (online) state.status = 'online'
+      if (online) {
+        state.status = 'online'
+        if (type === 'bedrock') applyBedrockDefaults(serverDir)
+      }
     }
   }
 

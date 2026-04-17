@@ -6,14 +6,9 @@ type PackType = 'resource' | 'behavior'
 
 interface Pack {
   name: string
-  size: number
-  modified: string
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  uuid: string
+  version: number[]
+  active: boolean
 }
 
 const PACK_META: Record<PackType, { label: string; description: string; color: string }> = {
@@ -80,14 +75,14 @@ export default function AddonsPage() {
     }
   }
 
-  const handleDelete = async (name: string, type: PackType) => {
+  const handleDelete = async (uuid: string, name: string, type: PackType) => {
     if (!confirm(`Delete ${name}? This action cannot be undone.`)) return
 
     try {
       const res = await fetch('/api/addons', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type }),
+        body: JSON.stringify({ uuid, type }),
       })
       const data = await res.json()
       setMessage({ text: data.message, ok: data.success })
@@ -116,9 +111,7 @@ export default function AddonsPage() {
       </div>
       <p className="text-zinc-500 text-sm mb-6">
         Upload <code className="text-zinc-400">.mcpack</code> or <code className="text-zinc-400">.mcaddon</code> files.
-        Place them in the correct category, then configure activation in{' '}
-        <code className="text-zinc-400">world_resource_packs.json</code> /{' '}
-        <code className="text-zinc-400">world_behavior_packs.json</code>.
+        Packs are automatically extracted and activated. Restart the server after uploading.
       </p>
 
       {message && (
@@ -178,30 +171,39 @@ export default function AddonsPage() {
             <div className="flex items-center gap-2 mb-3">
               <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{meta.label}</h2>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
-                {packs[type].length} file{packs[type].length !== 1 ? 's' : ''}
+                {packs[type].length} pack{packs[type].length !== 1 ? 's' : ''}
               </span>
             </div>
             <p className="text-zinc-600 text-xs mb-3">{meta.description}</p>
 
             {packs[type].length === 0 ? (
               <div className="bg-zinc-900 border border-zinc-800 border-dashed rounded-xl p-6 text-center text-zinc-600 text-sm">
-                No {meta.label.toLowerCase()} uploaded yet
+                No {meta.label.toLowerCase()} installed yet
               </div>
             ) : (
               <div className="space-y-2">
                 {packs[type].map((pack) => (
                   <div
-                    key={pack.name}
+                    key={pack.uuid}
                     className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-zinc-200 truncate">{pack.name}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        {formatSize(pack.size)} · {new Date(pack.modified).toLocaleDateString()}
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-zinc-200 truncate">{pack.name}</p>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                          pack.active
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : 'bg-zinc-700/50 text-zinc-500 border-zinc-600/30'
+                        }`}>
+                          {pack.active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5 font-mono">
+                        v{pack.version.join('.')}
                       </p>
                     </div>
                     <button
-                      onClick={() => handleDelete(pack.name, type)}
+                      onClick={() => handleDelete(pack.uuid, pack.name, type)}
                       className="ml-4 shrink-0 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
                     >
                       Delete
