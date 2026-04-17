@@ -1,0 +1,218 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+
+type PackType = 'resource' | 'behavior'
+
+interface Pack {
+  name: string
+  size: number
+  modified: string
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const PACK_META: Record<PackType, { label: string; description: string; color: string }> = {
+  resource: {
+    label: 'Resource Packs',
+    description: 'Textures, sounds, and UI changes',
+    color: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+  },
+  behavior: {
+    label: 'Behavior Packs',
+    description: 'Game logic, entities, and loot tables',
+    color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+  },
+}
+
+export default function AddonsPage() {
+  const [packs, setPacks] = useState<Record<PackType, Pack[]>>({ resource: [], behavior: [] })
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [uploadType, setUploadType] = useState<PackType>('resource')
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchPacks = async () => {
+    try {
+      const res = await fetch('/api/addons')
+      const data = await res.json()
+      if (data.success) setPacks(data.packs as Record<PackType, Pack[]>)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPacks()
+  }, [])
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.mcpack') && !file.name.endsWith('.mcaddon')) {
+      setMessage({ text: 'Only .mcpack or .mcaddon files are allowed', ok: false })
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    setUploading(true)
+    setMessage(null)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('type', uploadType)
+
+    try {
+      const res = await fetch('/api/addons', { method: 'POST', body: formData })
+      const data = await res.json()
+      setMessage({ text: data.message, ok: data.success })
+      if (data.success) await fetchPacks()
+    } catch {
+      setMessage({ text: 'Upload failed', ok: false })
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDelete = async (name: string, type: PackType) => {
+    if (!confirm(`Delete ${name}? This action cannot be undone.`)) return
+
+    try {
+      const res = await fetch('/api/addons', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type }),
+      })
+      const data = await res.json()
+      setMessage({ text: data.message, ok: data.success })
+      if (data.success) await fetchPacks()
+    } catch {
+      setMessage({ text: 'Delete failed', ok: false })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center gap-3 text-zinc-500">
+        <span className="animate-spin">⟳</span> Loading addons...
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 max-w-3xl">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-2">
+        <h1 className="text-2xl font-bold text-zinc-100">Addons</h1>
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
+          Bedrock Edition
+        </span>
+      </div>
+      <p className="text-zinc-500 text-sm mb-6">
+        Upload <code className="text-zinc-400">.mcpack</code> or <code className="text-zinc-400">.mcaddon</code> files.
+        Place them in the correct category, then configure activation in{' '}
+        <code className="text-zinc-400">world_resource_packs.json</code> /{' '}
+        <code className="text-zinc-400">world_behavior_packs.json</code>.
+      </p>
+
+      {message && (
+        <div
+          className={`px-4 py-3 rounded-lg text-sm mb-5 border ${
+            message.ok
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
+      {/* Upload */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-8">
+        <h2 className="text-sm font-semibold text-zinc-300 mb-4">Upload Pack</h2>
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="flex bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden text-sm shrink-0">
+            {(['resource', 'behavior'] as PackType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setUploadType(t)}
+                className={`px-4 py-2 transition-colors ${
+                  uploadType === t ? 'bg-zinc-600 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {PACK_META[t].label}
+              </button>
+            ))}
+          </div>
+          <label
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+              uploading
+                ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+            }`}
+          >
+            {uploading ? 'Uploading…' : 'Choose File'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mcpack,.mcaddon"
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
+          </label>
+          <span className="text-xs text-zinc-500">.mcpack or .mcaddon — max 200MB</span>
+        </div>
+      </div>
+
+      {/* Pack Lists */}
+      <div className="space-y-8">
+        {(Object.entries(PACK_META) as [PackType, typeof PACK_META[PackType]][]).map(([type, meta]) => (
+          <div key={type}>
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{meta.label}</h2>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
+                {packs[type].length} file{packs[type].length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-zinc-600 text-xs mb-3">{meta.description}</p>
+
+            {packs[type].length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 border-dashed rounded-xl p-6 text-center text-zinc-600 text-sm">
+                No {meta.label.toLowerCase()} uploaded yet
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {packs[type].map((pack) => (
+                  <div
+                    key={pack.name}
+                    className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-200 truncate">{pack.name}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        {formatSize(pack.size)} · {new Date(pack.modified).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(pack.name, type)}
+                      className="ml-4 shrink-0 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

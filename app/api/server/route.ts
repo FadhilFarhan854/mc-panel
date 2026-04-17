@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getStatus, getLogs, startServer, stopServer, restartServer } from '@/lib/minecraft-server'
+import { getStatus, getLogs, startServer, stopServer, restartServer, getServerType } from '@/lib/minecraft-server'
 
 export const runtime = 'nodejs'
 
@@ -7,6 +7,7 @@ export async function GET() {
   const logs = getLogs()
   return Response.json({
     status: getStatus(),
+    serverType: getServerType(),
     recentLogs: logs.slice(-10),
   })
 }
