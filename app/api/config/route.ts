@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { sendCommand, getStatus } from '@/lib/minecraft-server'
 
 export const runtime = 'nodejs'
 
@@ -96,5 +97,12 @@ export async function PUT(req: NextRequest) {
   const updated = serializeProperties(original, sanitized)
   fs.writeFileSync(filePath, updated, 'utf8')
 
-  return Response.json({ success: true, message: 'Configuration saved. Restart the server for changes to take effect.' })
+  // For Bedrock: show-coordinates in server.properties only affects new worlds.
+  // Existing worlds require the gamerule to be set at runtime.
+  if ('show-coordinates' in sanitized && getStatus() === 'online') {
+    const value = sanitized['show-coordinates'] === 'true' ? 'true' : 'false'
+    sendCommand(`gamerule showcoordinates ${value}`)
+  }
+
+  return Response.json({ success: true, message: 'Configuration saved. Restart the server for all changes to take effect.' })
 }
