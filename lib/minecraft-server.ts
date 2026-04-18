@@ -64,25 +64,36 @@ export function addLogListener(fn: (line: string) => void): () => void {
 /**
  * After a Bedrock server comes online, apply gamerules that are defined
  * in server.properties but only take effect on existing worlds via command.
- * Currently handles: show-coordinates
+ * Currently handles: show-coordinates, keep-inventory
  */
 function applyBedrockDefaults(serverDir: string): void {
   const propsPath = path.join(serverDir, 'server.properties')
   if (!fs.existsSync(propsPath)) return
 
+  const props: Record<string, string> = {}
   const content = fs.readFileSync(propsPath, 'utf8')
   for (const line of content.split('\n')) {
     const trimmed = line.trim()
-    if (trimmed.startsWith('show-coordinates=')) {
-      const value = trimmed.substring('show-coordinates='.length).trim()
-      // Small delay to ensure the server is fully ready to accept commands
-      setTimeout(() => {
-        safeWrite(`gamerule showcoordinates ${value === 'true' ? 'true' : 'false'}\n`)
-        addLog(`[Panel] Applied gamerule showcoordinates ${value === 'true' ? 'true' : 'false'}`)
-      }, 3000)
-      break
-    }
+    const idx = trimmed.indexOf('=')
+    if (idx === -1 || trimmed.startsWith('#')) continue
+    props[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
   }
+
+  const gamerules: { prop: string; rule: string }[] = [
+    { prop: 'show-coordinates', rule: 'showcoordinates' },
+    { prop: 'keep-inventory', rule: 'keepInventory' },
+  ]
+
+  // Small delay to ensure the server is fully ready to accept commands
+  setTimeout(() => {
+    for (const { prop, rule } of gamerules) {
+      if (prop in props) {
+        const value = props[prop] === 'true' ? 'true' : 'false'
+        safeWrite(`gamerule ${rule} ${value}\n`)
+        addLog(`[Panel] Applied gamerule ${rule} ${value}`)
+      }
+    }
+  }, 3000)
 }
 
 export function startServer(): { success: boolean; message: string } {

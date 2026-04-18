@@ -97,11 +97,17 @@ export async function PUT(req: NextRequest) {
   const updated = serializeProperties(original, sanitized)
   fs.writeFileSync(filePath, updated, 'utf8')
 
-  // For Bedrock: show-coordinates in server.properties only affects new worlds.
+  // For Bedrock: show-coordinates and keepInventory in server.properties only affects new worlds.
   // Existing worlds require the gamerule to be set at runtime.
-  if ('show-coordinates' in sanitized && getStatus() === 'online') {
-    const value = sanitized['show-coordinates'] === 'true' ? 'true' : 'false'
-    sendCommand(`gamerule showcoordinates ${value}`)
+  if (getStatus() === 'online') {
+    if ('show-coordinates' in sanitized) {
+      const value = sanitized['show-coordinates'] === 'true' ? 'true' : 'false'
+      sendCommand(`gamerule showcoordinates ${value}`)
+    }
+    if ('keep-inventory' in sanitized) {
+      const value = sanitized['keep-inventory'] === 'true' ? 'true' : 'false'
+      sendCommand(`gamerule keepInventory ${value}`)
+    }
   }
 
   return Response.json({ success: true, message: 'Configuration saved. Restart the server for all changes to take effect.' })
