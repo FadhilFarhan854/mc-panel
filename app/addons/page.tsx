@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 type PackType = 'resource' | 'behavior'
 
@@ -31,6 +31,8 @@ export default function AddonsPage() {
   const [uploadType, setUploadType] = useState<PackType>('resource')
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dragItem = useRef<{ type: PackType; index: number } | null>(null)
+  const dragOver = useRef<number | null>(null)
 
   const fetchPacks = async () => {
     try {
@@ -72,6 +74,49 @@ export default function AddonsPage() {
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleReorder = useCallback(async (type: PackType, newOrder: Pack[]) => {
+    setPacks((prev) => ({ ...prev, [type]: newOrder }))
+    await fetch('/api/addons', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, uuids: newOrder.map((p) => p.uuid) }),
+    })
+  }, [])
+
+  const handleDragStart = (type: PackType, index: number) => {
+    dragItem.current = { type, index }
+  }
+
+  const handleDragEnter = (index: number) => {
+    dragOver.current = index
+  }
+
+  const handleDragEnd = (type: PackType) => {
+    if (dragItem.current === null || dragOver.current === null) return
+    if (dragItem.current.index === dragOver.current) return
+    const updated = [...packs[type]]
+    const [moved] = updated.splice(dragItem.current.index, 1)
+    updated.splice(dragOver.current, 0, moved)
+    dragItem.current = null
+    dragOver.current = null
+    handleReorder(type, updated)
+  }
+
+  const handleToggle = async (uuid: string, type: PackType) => {
+    try {
+      const res = await fetch('/api/addons', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid, type }),
+      })
+      const data = await res.json()
+      setMessage({ text: data.message, ok: data.success })
+      if (data.success) await fetchPacks()
+    } catch {
+      setMessage({ text: 'Toggle failed', ok: false })
     }
   }
 
@@ -182,32 +227,55 @@ export default function AddonsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {packs[type].map((pack) => (
+                {packs[type].length > 1 && (
+                  <p className="text-xs text-zinc-600 mb-1">⠿ Drag to reorder — top pack loads first (use for MaterialBinLoader)</p>
+                )}
+                {packs[type].map((pack, index) => (
                   <div
                     key={pack.uuid}
-                    className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3"
+                    draggable
+                    onDragStart={() => handleDragStart(type, index)}
+                    onDragEnter={() => handleDragEnter(index)}
+                    onDragEnd={() => handleDragEnd(type)}
+                    onDragOver={(e) => e.preventDefault()}
+                    className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 cursor-grab active:cursor-grabbing active:opacity-60 transition-opacity"
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-zinc-200 truncate">{pack.name}</p>
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
-                          pack.active
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : 'bg-zinc-700/50 text-zinc-500 border-zinc-600/30'
-                        }`}>
-                          {pack.active ? 'Active' : 'Inactive'}
-                        </span>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-zinc-600 select-none text-sm">⠿</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-zinc-200 truncate">{pack.name}</p>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                            pack.active
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-zinc-700/50 text-zinc-500 border-zinc-600/30'
+                          }`}>
+                            {pack.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-500 mt-0.5 font-mono">
+                          v{pack.version.join('.')}
+                        </p>
                       </div>
-                      <p className="text-xs text-zinc-500 mt-0.5 font-mono">
-                        v{pack.version.join('.')}
-                      </p>
                     </div>
-                    <button
-                      onClick={() => handleDelete(pack.uuid, pack.name, type)}
-                      className="ml-4 shrink-0 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-2 ml-4 shrink-0">
+                      <button
+                        onClick={() => handleToggle(pack.uuid, type)}
+                        className={`text-xs font-medium px-2.5 py-1 rounded transition-colors ${
+                          pack.active
+                            ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
+                            : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
+                        }`}
+                      >
+                        {pack.active ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(pack.uuid, pack.name, type)}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

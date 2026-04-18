@@ -405,3 +405,67 @@ export async function DELETE(req: NextRequest) {
 
   return Response.json({ success: true, message: `${record.name} removed. Restart the server for changes to take effect.` })
 }
+
+// ── PUT (toggle activation) ──────────────────────────────────────────────
+export async function PUT(req: NextRequest) {
+  const body = await req.json()
+  const { uuid, type: packType } = body
+
+  if (typeof uuid !== 'string' || !/^[a-f0-9\-]{36}$/i.test(uuid)) {
+    return Response.json({ success: false, message: 'Invalid pack UUID' }, { status: 400 })
+  }
+  if (!VALID_PACK_TYPES.includes(packType as PackType)) {
+    return Response.json({ success: false, message: 'Invalid pack type' }, { status: 400 })
+  }
+
+  const type = packType as PackType
+  const panelPacks = readPanelPacks()
+  const record = panelPacks.find((p) => p.uuid === uuid && p.type === type)
+  if (!record) {
+    return Response.json({ success: false, message: 'Pack not found' }, { status: 404 })
+  }
+
+  const worldPacks = readWorldPacks(type)
+  const isActive = worldPacks.some((p) => p.pack_id === uuid)
+
+  if (isActive) {
+    writeWorldPacks(type, worldPacks.filter((p) => p.pack_id !== uuid))
+    return Response.json({ success: true, active: false, message: `${record.name} deactivated. Restart the server for changes to take effect.` })
+  } else {
+    writeWorldPacks(type, [...worldPacks, { pack_id: uuid, version: record.version }])
+    return Response.json({ success: true, active: true, message: `${record.name} activated. Restart the server for changes to take effect.` })
+  }
+}
+
+// ── PATCH (reorder) ──────────────────────────────────────────────────────
+export async function PATCH(req: NextRequest) {
+  const body = await req.json()
+  const { type: packType, uuids } = body
+
+  if (!VALID_PACK_TYPES.includes(packType as PackType)) {
+    return Response.json({ success: false, message: 'Invalid pack type' }, { status: 400 })
+  }
+  if (!Array.isArray(uuids) || !uuids.every((u) => typeof u === 'string')) {
+    return Response.json({ success: false, message: 'Invalid uuids array' }, { status: 400 })
+  }
+
+  const type = packType as PackType
+  const panelPacks = readPanelPacks()
+
+  // Reorder panel-packs: move packs of this type into the given order, keep other types unchanged
+  const others = panelPacks.filter((p) => p.type !== type)
+  const reordered = (uuids as string[])
+    .map((uuid) => panelPacks.find((p) => p.uuid === uuid && p.type === type))
+    .filter((p): p is PanelPackRecord => p !== undefined)
+  writePanelPacks([...others, ...reordered])
+
+  // Reorder world packs JSON in the same order
+  const worldPacks = readWorldPacks(type)
+  const worldMap = new Map(worldPacks.map((p) => [p.pack_id, p]))
+  const reorderedWorld = (uuids as string[])
+    .map((uuid) => worldMap.get(uuid))
+    .filter((p): p is PackEntry => p !== undefined)
+  writeWorldPacks(type, reorderedWorld)
+
+  return Response.json({ success: true })
+}
