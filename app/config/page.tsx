@@ -38,6 +38,7 @@ const JAVA_SETTINGS = [
 
 const BEDROCK_SETTINGS = [
   { key: 'show-coordinates', label: 'Show Coordinates in HUD', type: 'boolean' },
+  { key: 'disable-custom-skins', label: 'Only Allow Trusted Skins', type: 'boolean', note: 'true = hanya skin Marketplace · false = semua skin custom diizinkan' },
 ] as const
 
 export default function ConfigPage() {
@@ -48,13 +49,17 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [serverType, setServerType] = useState<ServerType>(null)
+  const [worlds, setWorlds] = useState<string[]>([])
+  const [worldsLoading, setWorldsLoading] = useState(false)
 
   useEffect(() => {
+    setWorldsLoading(true)
     Promise.all([
       fetch('/api/config').then((r) => r.json()),
       fetch('/api/server').then((r) => r.json()),
+      fetch('/api/worlds').then((r) => r.json()),
     ])
-      .then(([configData, serverData]) => {
+      .then(([configData, serverData, worldsData]) => {
         if (configData.success) {
           setProps(configData.properties as Properties)
           setRawText(
@@ -68,9 +73,15 @@ export default function ConfigPage() {
         if (serverData.serverType) {
           setServerType(serverData.serverType as ServerType)
         }
+        if (worldsData.success) {
+          setWorlds(worldsData.worlds as string[])
+        }
       })
       .catch(() => setMessage({ text: 'Failed to load configuration', ok: false }))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        setLoading(false)
+        setWorldsLoading(false)
+      })
   }, [])
 
   const setProp = (key: string, value: string) => {
@@ -188,6 +199,16 @@ export default function ConfigPage() {
             ))}
           </Section>
 
+          {/* World Selector */}
+          <Section title="World">
+            <WorldSelector
+              worlds={worlds}
+              loading={worldsLoading}
+              activeWorld={props['level-name'] ?? ''}
+              onSelect={(name) => setProp('level-name', name)}
+            />
+          </Section>
+
           {/* Java Edition Settings */}
           {(serverType === 'java' || serverType === null) && (
             <Section
@@ -235,6 +256,82 @@ type AnySettingTuple =
   | typeof COMMON_SETTINGS[number]
   | typeof JAVA_SETTINGS[number]
   | typeof BEDROCK_SETTINGS[number]
+
+function WorldSelector({
+  worlds,
+  loading,
+  activeWorld,
+  onSelect,
+}: {
+  worlds: string[]
+  loading: boolean
+  activeWorld: string
+  onSelect: (name: string) => void
+}) {
+  if (loading) {
+    return <p className="text-zinc-500 text-sm">Loading worlds…</p>
+  }
+
+  if (worlds.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <p className="text-zinc-500 text-sm">
+          No saved worlds found in the server directory.
+          The active world name is set via the <span className="font-mono text-zinc-400">level-name</span> field in General Settings.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
+      <p className="text-xs text-zinc-500 mb-3">
+        Select the world to load. This updates the{' '}
+        <span className="font-mono text-zinc-400">level-name</span> value. Save to apply.
+      </p>
+      {worlds.map((world) => {
+        const isActive = activeWorld === world
+        return (
+          <div
+            key={world}
+            className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors border ${
+              isActive
+                ? 'bg-emerald-500/10 border-emerald-500/40'
+                : 'bg-zinc-800 border-zinc-700 hover:border-zinc-500'
+            }`}
+          >
+            <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+              <input
+                type="radio"
+                name="active-world"
+                value={world}
+                checked={isActive}
+                onChange={() => onSelect(world)}
+                className="accent-emerald-500 shrink-0"
+              />
+              <span className={`text-sm font-medium truncate ${isActive ? 'text-emerald-300' : 'text-zinc-300'}`}>
+                {world}
+              </span>
+              {isActive && (
+                <span className="shrink-0 text-xs font-semibold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Active
+                </span>
+              )}
+            </label>
+            <a
+              href={`/api/worlds/${encodeURIComponent(world)}/download`}
+              download={`${world}.tar.gz`}
+              title="Download world backup (.tar.gz)"
+              className="shrink-0 flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-100 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 hover:border-zinc-500 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              ↓ Download
+            </a>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function SettingField({
   setting,
