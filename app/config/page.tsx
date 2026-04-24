@@ -38,6 +38,7 @@ const JAVA_SETTINGS = [
 
 const BEDROCK_SETTINGS = [
   { key: 'show-coordinates', label: 'Show Coordinates in HUD', type: 'boolean' },
+  { key: 'keep-inventory', label: 'Keep Inventory on Death', type: 'boolean' },
   { key: 'disable-custom-skins', label: 'Only Allow Trusted Skins', type: 'boolean', note: 'true = hanya skin Marketplace · false = semua skin custom diizinkan' },
 ] as const
 
