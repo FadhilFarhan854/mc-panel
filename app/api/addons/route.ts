@@ -280,10 +280,33 @@ function sanitizeFolderName(name: string): string {
 export async function GET() {
   const panelPacks = readPanelPacks()
   const result: Record<PackType, object[]> = { resource: [], behavior: [] }
+  let dirty = false
 
   for (const type of VALID_PACK_TYPES) {
     const worldPacks = readWorldPacks(type)
     const activeIds = new Set(worldPacks.map((p) => p.pack_id))
+    const dir = getPacksDir(type)
+
+    // Scan disk for packs not yet registered in panel-packs.json
+    if (fs.existsSync(dir)) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('__')) continue
+        const folderPath = path.join(dir, entry.name)
+        const manifest = findManifest(folderPath)
+        if (!manifest) continue
+        if (panelPacks.some((p) => p.uuid === manifest.uuid)) continue
+        // Auto-import into registry
+        panelPacks.push({
+          uuid: manifest.uuid,
+          type,
+          name: manifest.name ?? entry.name,
+          version: manifest.version,
+          folder: entry.name,
+          needs_experiments: manifest.capabilities.length > 0 || manifest.hasScript,
+        })
+        dirty = true
+      }
+    }
 
     result[type] = panelPacks
       .filter((p) => p.type === type)
@@ -295,6 +318,8 @@ export async function GET() {
         needs_experiments: p.needs_experiments ?? false,
       }))
   }
+
+  if (dirty) writePanelPacks(panelPacks)
 
   return Response.json({ success: true, packs: result, world_path: getWorldDir() })
 }
@@ -460,9 +485,33 @@ export async function PUT(req: NextRequest) {
 
   const type = packType as PackType
   const panelPacks = readPanelPacks()
-  const record = panelPacks.find((p) => p.uuid === uuid && p.type === type)
+  let record = panelPacks.find((p) => p.uuid === uuid && p.type === type)
+
   if (!record) {
-    return Response.json({ success: false, message: 'Pack not found' }, { status: 404 })
+    // Fallback: scan disk for a pack with this UUID
+    const dir = getPacksDir(type)
+    if (fs.existsSync(dir)) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('__')) continue
+        const manifest = findManifest(path.join(dir, entry.name))
+        if (manifest?.uuid === uuid) {
+          record = {
+            uuid: manifest.uuid,
+            type,
+            name: manifest.name ?? entry.name,
+            version: manifest.version,
+            folder: entry.name,
+            needs_experiments: manifest.capabilities.length > 0 || manifest.hasScript,
+          }
+          panelPacks.push(record)
+          writePanelPacks(panelPacks)
+          break
+        }
+      }
+    }
+    if (!record) {
+      return Response.json({ success: false, message: 'Pack not found' }, { status: 404 })
+    }
   }
 
   const worldPacks = readWorldPacks(type)
