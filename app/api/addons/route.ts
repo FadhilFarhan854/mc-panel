@@ -69,6 +69,7 @@ interface PanelPackRecord {
   name: string
   version: number[]
   folder: string // subfolder name inside resource_packs / behavior_packs
+  needs_experiments?: boolean
 }
 
 function getPanelPacksPath(): string {
@@ -89,11 +90,34 @@ function writePanelPacks(records: PanelPackRecord[]): void {
   fs.writeFileSync(getPanelPacksPath(), JSON.stringify(records, null, 2), 'utf8')
 }
 
+/** Write experiments.json to the world folder to enable experimental gameplay features */
+function enableWorldExperiments(includeGametest: boolean): void {
+  const worldDir = getWorldDir()
+  if (!fs.existsSync(worldDir)) fs.mkdirSync(worldDir, { recursive: true })
+  const expPath = path.join(worldDir, 'experiments.json')
+  let existing: Record<string, boolean> = {}
+  if (fs.existsSync(expPath)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(expPath, 'utf8')) as Record<string, boolean>
+    } catch { /* use empty */ }
+  }
+  const updated: Record<string, boolean> = {
+    ...existing,
+    upcoming_creator_features: true,
+    experimental_molang_features: true,
+    data_driven_items: true,
+  }
+  if (includeGametest) updated.gametest = true
+  fs.writeFileSync(expPath, JSON.stringify(updated, null, 2), 'utf8')
+}
+
 // ── Manifest helpers ─────────────────────────────────────────────────────
 interface ManifestHeader {
   uuid: string
   version: number[]
   name?: string
+  capabilities: string[]
+  hasScript: boolean
 }
 
 function findManifest(dir: string): ManifestHeader | null {
@@ -118,7 +142,15 @@ function findManifest(dir: string): ManifestHeader | null {
         } else {
           version = [1, 0, 0]
         }
-        return { uuid: String(h.uuid), version, name: h.name }
+        const capabilities: string[] = Array.isArray(data?.capabilities)
+          ? (data.capabilities as unknown[]).map(String)
+          : []
+        const hasScript =
+          Array.isArray(data?.modules) &&
+          (data.modules as { type?: string }[]).some(
+            (m) => m?.type === 'script' || m?.type === 'javascript'
+          )
+        return { uuid: String(h.uuid), version, name: h.name, capabilities, hasScript }
       } catch { /* skip invalid */ }
     }
     if (entry.isDirectory()) {
@@ -260,10 +292,11 @@ export async function GET() {
         uuid: p.uuid,
         version: p.version,
         active: activeIds.has(p.uuid),
+        needs_experiments: p.needs_experiments ?? false,
       }))
   }
 
-  return Response.json({ success: true, packs: result })
+  return Response.json({ success: true, packs: result, world_path: getWorldDir() })
 }
 
 // ── POST (upload) ───────────────────────────────────────────────────────
@@ -348,6 +381,7 @@ export async function POST(req: NextRequest) {
       name: manifest.name ?? folder,
       version: manifest.version,
       folder,
+      needs_experiments: manifest.capabilities.length > 0 || manifest.hasScript,
     }
     if (panelIdx >= 0) panelPacks[panelIdx] = record
     else panelPacks.push(record)
@@ -360,12 +394,18 @@ export async function POST(req: NextRequest) {
     names.push(manifest.name ?? folder)
   }
 
+  const anyNeedsExp = extracted.some(({ manifest }) => manifest.capabilities.length > 0 || manifest.hasScript)
+  const anyHasScript = extracted.some(({ manifest }) => manifest.hasScript)
+  if (anyNeedsExp) enableWorldExperiments(anyHasScript)
+
   writePanelPacks(panelPacks)
   writeWorldPacks(type, worldPacks)
 
   return Response.json({
     success: true,
-    message: `${names.join(', ')} uploaded and activated. Restart the server for changes to take effect.`,
+    message: `${names.join(', ')} uploaded and activated.${
+      anyNeedsExp ? ' Experimental features have been enabled for this world.' : ''
+    } Restart the server for changes to take effect.`,
   })
 }
 

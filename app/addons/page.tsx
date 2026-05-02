@@ -9,6 +9,7 @@ interface Pack {
   uuid: string
   version: number[]
   active: boolean
+  needs_experiments?: boolean
 }
 
 const PACK_META: Record<PackType, { label: string; description: string; color: string }> = {
@@ -30,6 +31,7 @@ export default function AddonsPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadType, setUploadType] = useState<PackType>('resource')
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
+  const [worldPath, setWorldPath] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragItem = useRef<{ type: PackType; index: number } | null>(null)
   const dragOver = useRef<number | null>(null)
@@ -38,7 +40,10 @@ export default function AddonsPage() {
     try {
       const res = await fetch('/api/addons')
       const data = await res.json()
-      if (data.success) setPacks(data.packs as Record<PackType, Pack[]>)
+      if (data.success) {
+        setPacks(data.packs as Record<PackType, Pack[]>)
+        if (data.world_path) setWorldPath(data.world_path as string)
+      }
     } finally {
       setLoading(false)
     }
@@ -158,6 +163,11 @@ export default function AddonsPage() {
         Upload <code className="text-zinc-400">.mcpack</code> or <code className="text-zinc-400">.mcaddon</code> files.
         Packs are automatically extracted and activated. Restart the server after uploading.
       </p>
+      {worldPath && (
+        <p className="text-zinc-600 text-xs mb-6 font-mono">
+          World path: <span className="text-zinc-500">{worldPath}</span>
+        </p>
+      )}
 
       {message && (
         <div
@@ -252,6 +262,11 @@ export default function AddonsPage() {
                           }`}>
                             {pack.active ? 'Active' : 'Inactive'}
                           </span>
+                          {pack.needs_experiments && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/30" title="This pack requires experimental gameplay features">
+                              Experimental
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-zinc-500 mt-0.5 font-mono">
                           v{pack.version.join('.')}
