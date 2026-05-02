@@ -287,13 +287,16 @@ export async function GET() {
     const activeIds = new Set(worldPacks.map((p) => p.pack_id))
     const dir = getPacksDir(type)
 
-    // Scan disk for packs not yet registered in panel-packs.json
+    // Scan disk for packs that are in world_*_packs.json but not yet in panel registry.
+    // (Only import packs Minecraft already knows about — avoids pulling in vanilla BDS packs.)
     if (fs.existsSync(dir)) {
+      const worldPackIds = new Set(worldPacks.map((p) => p.pack_id))
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith('__')) continue
         const folderPath = path.join(dir, entry.name)
         const manifest = findManifest(folderPath)
         if (!manifest) continue
+        if (!worldPackIds.has(manifest.uuid)) continue // skip vanilla / unactivated packs
         if (panelPacks.some((p) => p.uuid === manifest.uuid)) continue
         // Auto-import into registry
         panelPacks.push({
