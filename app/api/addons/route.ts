@@ -70,6 +70,7 @@ interface PanelPackRecord {
   version: number[]
   folder: string // subfolder name inside resource_packs / behavior_packs
   needs_experiments?: boolean
+  uploaded?: boolean // true = explicitly uploaded via panel; false/absent = auto-imported
 }
 
 function getPanelPacksPath(): string {
@@ -290,15 +291,14 @@ export async function GET() {
     // Scan disk for packs that are in world_*_packs.json but not yet in panel registry.
     // (Only import packs Minecraft already knows about — avoids pulling in vanilla BDS packs.)
     if (fs.existsSync(dir)) {
-      const worldPackIds = new Set(worldPacks.map((p) => p.pack_id))
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith('__')) continue
         const folderPath = path.join(dir, entry.name)
         const manifest = findManifest(folderPath)
         if (!manifest) continue
-        if (!worldPackIds.has(manifest.uuid)) continue // skip vanilla / unactivated packs
+        if (!activeIds.has(manifest.uuid)) continue // skip vanilla / unactivated packs
         if (panelPacks.some((p) => p.uuid === manifest.uuid)) continue
-        // Auto-import into registry
+        // Auto-import into registry (mark uploaded=false so we know it came from disk scan)
         panelPacks.push({
           uuid: manifest.uuid,
           type,
@@ -306,13 +306,25 @@ export async function GET() {
           version: manifest.version,
           folder: entry.name,
           needs_experiments: manifest.capabilities.length > 0 || manifest.hasScript,
+          uploaded: false,
         })
         dirty = true
       }
     }
 
+    // Purge auto-imported entries that are no longer active in world packs.
+    // This cleans up vanilla packs that were accidentally imported previously.
+    const before = panelPacks.length
+    const cleaned = panelPacks.filter(
+      (p) => p.type !== type || p.uploaded === true || activeIds.has(p.uuid)
+    )
+    if (cleaned.length !== before) {
+      panelPacks.splice(0, panelPacks.length, ...cleaned)
+      dirty = true
+    }
+
     result[type] = panelPacks
-      .filter((p) => p.type === type)
+      .filter((p) => p.type === type && (p.uploaded === true || activeIds.has(p.uuid)))
       .map((p) => ({
         name: p.name,
         uuid: p.uuid,
@@ -410,6 +422,7 @@ export async function POST(req: NextRequest) {
       version: manifest.version,
       folder,
       needs_experiments: manifest.capabilities.length > 0 || manifest.hasScript,
+      uploaded: true,
     }
     if (panelIdx >= 0) panelPacks[panelIdx] = record
     else panelPacks.push(record)
