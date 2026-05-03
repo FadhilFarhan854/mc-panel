@@ -15,6 +15,8 @@ interface Pack {
 interface DebugInfo {
   world_json: { pack_id: string; version: number[] }[]
   disk_uuids: Record<string, string>
+  valid_known_packs?: { uuid: string; path: string }[]
+  experiments?: Record<string, boolean>
 }
 
 const PACK_META: Record<PackType, { label: string; description: string; color: string }> = {
@@ -37,7 +39,7 @@ export default function AddonsPage() {
   const [uploadType, setUploadType] = useState<PackType>('resource')
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [worldPath, setWorldPath] = useState<string>('')
-  const [debug, setDebug] = useState<Record<PackType, DebugInfo> | null>(null)
+  const [debug, setDebug] = useState<(Record<PackType, DebugInfo> & { valid_known_packs?: { uuid: string; path: string }[]; experiments?: Record<string, boolean> }) | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragItem = useRef<{ type: PackType; index: number } | null>(null)
@@ -50,7 +52,7 @@ export default function AddonsPage() {
       if (data.success) {
         setPacks(data.packs as Record<PackType, Pack[]>)
         if (data.world_path) setWorldPath(data.world_path as string)
-        if (data.debug) setDebug(data.debug as Record<PackType, DebugInfo>)
+        if (data.debug) setDebug(data.debug as Record<PackType, DebugInfo> & { valid_known_packs?: { uuid: string; path: string }[]; experiments?: Record<string, boolean> })
       }
     } finally {
       setLoading(false)
@@ -347,6 +349,34 @@ export default function AddonsPage() {
                   </div>
                 )
               })}
+
+              {/* valid_known_packs.json */}
+              {debug.valid_known_packs !== undefined && (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-xs font-mono">
+                  <p className="text-zinc-400 font-semibold mb-2">valid_known_packs.json (our entries)</p>
+                  {debug.valid_known_packs.length === 0 ? (
+                    <p className="text-red-400">  (empty — registerKnownPack not called yet, or BDS overwrote it)</p>
+                  ) : (
+                    debug.valid_known_packs.map((k) => (
+                      <p key={k.uuid} className="text-emerald-400">  {k.path}: {k.uuid}</p>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* experiments.json */}
+              {debug.experiments !== undefined && (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-xs font-mono">
+                  <p className="text-zinc-400 font-semibold mb-2">experiments.json</p>
+                  {Object.keys(debug.experiments).length === 0 ? (
+                    <p className="text-red-400">  (file missing or empty)</p>
+                  ) : (
+                    Object.entries(debug.experiments).map(([k, v]) => (
+                      <p key={k} className={v ? 'text-emerald-400' : 'text-zinc-500'}>  {k}: {String(v)}</p>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

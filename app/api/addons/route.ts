@@ -378,9 +378,21 @@ export async function GET() {
   if (dirty) writePanelPacks(panelPacks)
 
   // Debug: include raw world packs JSON and disk manifest UUIDs for diagnostics
-  const debug: Record<PackType, { world_json: PackEntry[]; disk_uuids: Record<string, string> }> = {
+  const knownPacks = readKnownPacks()
+  const experimentsPath = path.join(getWorldDir(), 'experiments.json')
+  let experimentsJson: Record<string, boolean> = {}
+  if (fs.existsSync(experimentsPath)) {
+    try { experimentsJson = JSON.parse(fs.readFileSync(experimentsPath, 'utf8')) as Record<string, boolean> } catch { /* ignore */ }
+  }
+
+  const debug: Record<PackType, { world_json: PackEntry[]; disk_uuids: Record<string, string> }> & {
+    valid_known_packs: { uuid: string; path: string }[]
+    experiments: Record<string, boolean>
+  } = {
     resource: { world_json: [], disk_uuids: {} },
     behavior: { world_json: [], disk_uuids: {} },
+    valid_known_packs: knownPacks.map((k) => ({ uuid: k.uuid, path: k.path })),
+    experiments: experimentsJson,
   }
   for (const type of VALID_PACK_TYPES) {
     debug[type].world_json = readWorldPacks(type)
