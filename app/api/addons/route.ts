@@ -119,6 +119,7 @@ interface ManifestHeader {
   name?: string
   capabilities: string[]
   hasScript: boolean
+  moduleTypes: string[]
 }
 
 function findManifest(dir: string): ManifestHeader | null {
@@ -146,12 +147,13 @@ function findManifest(dir: string): ManifestHeader | null {
         const capabilities: string[] = Array.isArray(data?.capabilities)
           ? (data.capabilities as unknown[]).map(String)
           : []
-        const hasScript =
-          Array.isArray(data?.modules) &&
-          (data.modules as { type?: string }[]).some(
-            (m) => m?.type === 'script' || m?.type === 'javascript'
-          )
-        return { uuid: String(h.uuid), version, name: h.name, capabilities, hasScript }
+        const moduleTypes: string[] = Array.isArray(data?.modules)
+          ? (data.modules as { type?: string }[]).map((m) => String(m?.type ?? ''))
+          : []
+        const hasScript = moduleTypes.some(
+          (t) => t === 'script' || t === 'javascript'
+        )
+        return { uuid: String(h.uuid), version, name: h.name, capabilities, hasScript, moduleTypes }
       } catch { /* skip invalid */ }
     }
     if (entry.isDirectory()) {
@@ -435,18 +437,36 @@ export async function POST(req: NextRequest) {
     names.push(manifest.name ?? folder)
   }
 
-  const anyNeedsExp = extracted.some(({ manifest }) => manifest.capabilities.length > 0 || manifest.hasScript)
+  // Check for manifest type mismatch (e.g. resource pack uploaded as behavior pack)
+  const BEHAVIOR_MODULE_TYPES = new Set(['data', 'script', 'javascript'])
+  const RESOURCE_MODULE_TYPES = new Set(['resources'])
+  const typeMismatch = extracted.some(({ manifest }) => {
+    if (manifest.moduleTypes.length === 0) return false
+    if (type === 'behavior') return manifest.moduleTypes.every((t) => RESOURCE_MODULE_TYPES.has(t))
+    if (type === 'resource') return manifest.moduleTypes.every((t) => BEHAVIOR_MODULE_TYPES.has(t))
+    return false
+  })
+
   const anyHasScript = extracted.some(({ manifest }) => manifest.hasScript)
-  if (anyNeedsExp) enableWorldExperiments(anyHasScript)
+  // Always enable experiments for behavior packs — many require them without declaring capabilities
+  if (type === 'behavior') {
+    enableWorldExperiments(anyHasScript)
+  } else {
+    const anyNeedsExp = extracted.some(({ manifest }) => manifest.capabilities.length > 0 || manifest.hasScript)
+    if (anyNeedsExp) enableWorldExperiments(anyHasScript)
+  }
 
   writePanelPacks(panelPacks)
   writeWorldPacks(type, worldPacks)
 
+  const expNote = type === 'behavior' ? ' Experimental features have been enabled for this world.' : ''
+  const mismatchWarning = typeMismatch
+    ? ` WARNING: The pack manifest appears to be a ${type === 'behavior' ? 'resource' : 'behavior'} pack — it may not work as a ${type} pack in-game.`
+    : ''
+
   return Response.json({
     success: true,
-    message: `${names.join(', ')} uploaded and activated.${
-      anyNeedsExp ? ' Experimental features have been enabled for this world.' : ''
-    } Restart the server for changes to take effect.`,
+    message: `${names.join(', ')} uploaded and activated.${expNote}${mismatchWarning} Restart the server for changes to take effect.`,
   })
 }
 
