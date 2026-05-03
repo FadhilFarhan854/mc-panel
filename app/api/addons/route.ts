@@ -338,7 +338,24 @@ export async function GET() {
 
   if (dirty) writePanelPacks(panelPacks)
 
-  return Response.json({ success: true, packs: result, world_path: getWorldDir() })
+  // Debug: include raw world packs JSON and disk manifest UUIDs for diagnostics
+  const debug: Record<PackType, { world_json: PackEntry[]; disk_uuids: Record<string, string> }> = {
+    resource: { world_json: [], disk_uuids: {} },
+    behavior: { world_json: [], disk_uuids: {} },
+  }
+  for (const type of VALID_PACK_TYPES) {
+    debug[type].world_json = readWorldPacks(type)
+    const dir = getPacksDir(type)
+    if (fs.existsSync(dir)) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('__')) continue
+        const manifest = findManifest(path.join(dir, entry.name))
+        if (manifest) debug[type].disk_uuids[entry.name] = manifest.uuid
+      }
+    }
+  }
+
+  return Response.json({ success: true, packs: result, world_path: getWorldDir(), debug })
 }
 
 // ── POST (upload) ───────────────────────────────────────────────────────

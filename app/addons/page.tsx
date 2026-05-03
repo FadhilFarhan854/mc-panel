@@ -12,6 +12,11 @@ interface Pack {
   needs_experiments?: boolean
 }
 
+interface DebugInfo {
+  world_json: { pack_id: string; version: number[] }[]
+  disk_uuids: Record<string, string>
+}
+
 const PACK_META: Record<PackType, { label: string; description: string; color: string }> = {
   resource: {
     label: 'Resource Packs',
@@ -32,6 +37,8 @@ export default function AddonsPage() {
   const [uploadType, setUploadType] = useState<PackType>('resource')
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [worldPath, setWorldPath] = useState<string>('')
+  const [debug, setDebug] = useState<Record<PackType, DebugInfo> | null>(null)
+  const [showDebug, setShowDebug] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragItem = useRef<{ type: PackType; index: number } | null>(null)
   const dragOver = useRef<number | null>(null)
@@ -43,6 +50,7 @@ export default function AddonsPage() {
       if (data.success) {
         setPacks(data.packs as Record<PackType, Pack[]>)
         if (data.world_path) setWorldPath(data.world_path as string)
+        if (data.debug) setDebug(data.debug as Record<PackType, DebugInfo>)
       }
     } finally {
       setLoading(false)
@@ -298,6 +306,51 @@ export default function AddonsPage() {
           </div>
         ))}
       </div>
+
+      {/* Diagnostic */}
+      {debug && (
+        <div className="mt-8">
+          <button
+            onClick={() => setShowDebug((v) => !v)}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors underline underline-offset-2"
+          >
+            {showDebug ? 'Hide' : 'Show'} diagnostic info
+          </button>
+          {showDebug && (
+            <div className="mt-3 space-y-4">
+              {(['resource', 'behavior'] as PackType[]).map((type) => {
+                const d = debug[type]
+                return (
+                  <div key={type} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-xs font-mono">
+                    <p className="text-zinc-400 font-semibold mb-2 capitalize">{type} pack diagnostic</p>
+                    <p className="text-zinc-500 mb-1">world_{type}_packs.json:</p>
+                    {d.world_json.length === 0 ? (
+                      <p className="text-red-400 mb-2">  (empty — pack NOT registered in world JSON)</p>
+                    ) : (
+                      d.world_json.map((e) => (
+                        <p key={e.pack_id} className="text-emerald-400 mb-1">  pack_id: {e.pack_id}  v{e.version.join('.')}</p>
+                      ))
+                    )}
+                    <p className="text-zinc-500 mt-2 mb-1">Packs on disk:</p>
+                    {Object.entries(d.disk_uuids).length === 0 ? (
+                      <p className="text-red-400">  (no packs found in {type}_packs/ folder)</p>
+                    ) : (
+                      Object.entries(d.disk_uuids).map(([folder, uuid]) => {
+                        const inWorld = d.world_json.some((e) => e.pack_id === uuid)
+                        return (
+                          <p key={folder} className={inWorld ? 'text-emerald-400' : 'text-amber-400'}>
+                            {inWorld ? '  [active]' : '  [not in world JSON]'} {folder}: {uuid}
+                          </p>
+                        )
+                      })
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
