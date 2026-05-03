@@ -61,6 +61,45 @@ function writeWorldPacks(type: PackType, entries: PackEntry[]): void {
   fs.writeFileSync(p, JSON.stringify(entries, null, 2), 'utf8')
 }
 
+// ── valid_known_packs.json ───────────────────────────────────────────────
+// BDS requires packs to be listed here, otherwise it ignores world_*_packs.json
+interface KnownPackEntry {
+  file_system: string
+  path: string
+  uuid: string
+  version: string
+}
+
+function getValidKnownPacksPath(): string {
+  return path.join(getServerDir(), 'valid_known_packs.json')
+}
+
+function readKnownPacks(): KnownPackEntry[] {
+  const p = getValidKnownPacksPath()
+  if (!fs.existsSync(p)) return []
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8')) as KnownPackEntry[]
+  } catch {
+    return []
+  }
+}
+
+function registerKnownPack(type: PackType, folder: string, uuid: string, version: number[]): void {
+  const packPath = `${type === 'resource' ? 'resource_packs' : 'behavior_packs'}/${folder}`
+  const versionStr = version.join('.')
+  const known = readKnownPacks()
+  const existing = known.findIndex((k) => k.uuid === uuid)
+  const entry: KnownPackEntry = { file_system: 'RawPath', path: packPath, uuid, version: versionStr }
+  if (existing >= 0) known[existing] = entry
+  else known.push(entry)
+  fs.writeFileSync(getValidKnownPacksPath(), JSON.stringify(known, null, 2), 'utf8')
+}
+
+function unregisterKnownPack(uuid: string): void {
+  const known = readKnownPacks().filter((k) => k.uuid !== uuid)
+  fs.writeFileSync(getValidKnownPacksPath(), JSON.stringify(known, null, 2), 'utf8')
+}
+
 // ── Panel-managed pack registry ──────────────────────────────────────────
 // Tracks which packs were uploaded via the panel so we don't list vanilla packs.
 interface PanelPackRecord {
@@ -476,6 +515,11 @@ export async function POST(req: NextRequest) {
   writePanelPacks(panelPacks)
   writeWorldPacks(type, worldPacks)
 
+  // Register each pack in valid_known_packs.json so BDS actually loads them
+  for (const { folder, manifest } of extracted) {
+    registerKnownPack(type, folder, manifest.uuid, manifest.version)
+  }
+
   const expNote = type === 'behavior' ? ' Experimental features have been enabled for this world.' : ''
   const mismatchWarning = typeMismatch
     ? ` WARNING: The pack manifest appears to be a ${type === 'behavior' ? 'resource' : 'behavior'} pack — it may not work as a ${type} pack in-game.`
@@ -520,6 +564,9 @@ export async function DELETE(req: NextRequest) {
 
   // Remove from panel registry
   writePanelPacks(panelPacks.filter((p) => p.uuid !== uuid))
+
+  // Remove from valid_known_packs.json
+  unregisterKnownPack(uuid)
 
   return Response.json({ success: true, message: `${record.name} removed. Restart the server for changes to take effect.` })
 }
@@ -572,9 +619,11 @@ export async function PUT(req: NextRequest) {
 
   if (isActive) {
     writeWorldPacks(type, worldPacks.filter((p) => p.pack_id !== uuid))
+    unregisterKnownPack(uuid)
     return Response.json({ success: true, active: false, message: `${record.name} deactivated. Restart the server for changes to take effect.` })
   } else {
     writeWorldPacks(type, [...worldPacks, { pack_id: uuid, version: record.version }])
+    registerKnownPack(type, record.folder, uuid, record.version)
     return Response.json({ success: true, active: true, message: `${record.name} activated. Restart the server for changes to take effect.` })
   }
 }
