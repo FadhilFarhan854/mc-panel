@@ -108,6 +108,11 @@ export async function PUT(req: NextRequest) {
       const value = sanitized['keep-inventory'] === 'true' ? 'true' : 'false'
       sendCommand(`gamerule keepInventory ${value}`)
     }
+    if ('players-sleeping-percentage' in sanitized) {
+      const raw = parseInt(sanitized['players-sleeping-percentage'], 10)
+      const value = Number.isFinite(raw) ? String(Math.max(0, Math.min(100, raw))) : '100'
+      sendCommand(`gamerule playersSleepingPercentage ${value}`)
+    }
   }
 
   return Response.json({ success: true, message: 'Configuration saved. Restart the server for all changes to take effect.' })

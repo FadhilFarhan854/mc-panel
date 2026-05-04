@@ -34,6 +34,7 @@ const JAVA_SETTINGS = [
   { key: 'resource-pack-sha1', label: 'Resource Pack SHA-1 Hash', type: 'text', note: 'Optional, for integrity check' },
   { key: 'resource-pack-enforce', label: 'Force Resource Pack (kick if declined)', type: 'boolean' },
   { key: 'resource-pack-prompt', label: 'Resource Pack Prompt Message', type: 'text', note: 'Shown when player is asked to download' },
+  { key: 'players-sleeping-percentage', label: 'Players Sleeping Percentage (% required to skip night)', type: 'number', note: 'Default: 100. Applied as gamerule when server is online.' },
 ] as const
 
 const BEDROCK_SETTINGS = [
@@ -62,9 +63,13 @@ export default function ConfigPage() {
     ])
       .then(([configData, serverData, worldsData]) => {
         if (configData.success) {
-          setProps(configData.properties as Properties)
+          const loaded = configData.properties as Properties
+          if (!('players-sleeping-percentage' in loaded)) {
+            loaded['players-sleeping-percentage'] = '100'
+          }
+          setProps(loaded)
           setRawText(
-            Object.entries(configData.properties as Properties)
+            Object.entries(loaded)
               .map(([k, v]) => `${k}=${v}`)
               .join('\n')
           )

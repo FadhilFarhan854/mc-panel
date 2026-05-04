@@ -96,6 +96,33 @@ function applyBedrockDefaults(serverDir: string): void {
   }, 3000)
 }
 
+/**
+ * After a Java server comes online, apply gamerules that are stored in
+ * server.properties by the panel (they don't exist in vanilla server.properties).
+ * Currently handles: players-sleeping-percentage → playersSleepingPercentage
+ */
+function applyJavaDefaults(serverDir: string): void {
+  const propsPath = path.join(serverDir, 'server.properties')
+  if (!fs.existsSync(propsPath)) return
+
+  const props: Record<string, string> = {}
+  const content = fs.readFileSync(propsPath, 'utf8')
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    const idx = trimmed.indexOf('=')
+    if (idx === -1 || trimmed.startsWith('#')) continue
+    props[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
+  }
+
+  // Small delay to ensure the server is fully ready to accept commands
+  setTimeout(() => {
+    const raw = parseInt(props['players-sleeping-percentage'] ?? '100', 10)
+    const value = Number.isFinite(raw) ? String(Math.max(0, Math.min(100, raw))) : '100'
+    safeWrite(`gamerule playersSleepingPercentage ${value}\n`)
+    addLog(`[Panel] Applied gamerule playersSleepingPercentage ${value}`)
+  }, 3000)
+}
+
 export function startServer(): { success: boolean; message: string } {
   if (state.status !== 'offline') {
     return { success: false, message: `Server is already ${state.status}` }
@@ -147,6 +174,7 @@ export function startServer(): { success: boolean; message: string } {
       if (online) {
         state.status = 'online'
         if (type === 'bedrock') applyBedrockDefaults(serverDir)
+        if (type === 'java') applyJavaDefaults(serverDir)
       }
     }
   }
