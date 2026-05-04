@@ -64,7 +64,7 @@ export function addLogListener(fn: (line: string) => void): () => void {
 /**
  * After a Bedrock server comes online, apply gamerules that are defined
  * in server.properties but only take effect on existing worlds via command.
- * Currently handles: show-coordinates, keep-inventory
+ * Currently handles: show-coordinates, keep-inventory, players-sleeping-percentage
  */
 function applyBedrockDefaults(serverDir: string): void {
   const propsPath = path.join(serverDir, 'server.properties')
@@ -79,20 +79,24 @@ function applyBedrockDefaults(serverDir: string): void {
     props[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
   }
 
-  const gamerules: { prop: string; rule: string }[] = [
+  const boolRules: { prop: string; rule: string }[] = [
     { prop: 'show-coordinates', rule: 'showcoordinates' },
     { prop: 'keep-inventory', rule: 'keepInventory' },
   ]
 
   // Small delay to ensure the server is fully ready to accept commands
   setTimeout(() => {
-    for (const { prop, rule } of gamerules) {
+    for (const { prop, rule } of boolRules) {
       if (prop in props) {
         const value = props[prop] === 'true' ? 'true' : 'false'
         safeWrite(`gamerule ${rule} ${value}\n`)
         addLog(`[Panel] Applied gamerule ${rule} ${value}`)
       }
     }
+    const raw = parseInt(props['players-sleeping-percentage'] ?? '100', 10)
+    const sleepValue = Number.isFinite(raw) ? String(Math.max(0, Math.min(100, raw))) : '100'
+    safeWrite(`gamerule playerssleepingpercentage ${sleepValue}\n`)
+    addLog(`[Panel] Applied gamerule playerssleepingpercentage ${sleepValue}`)
   }, 3000)
 }
 

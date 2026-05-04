@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { sendCommand, getStatus } from '@/lib/minecraft-server'
+import { sendCommand, getStatus, getServerType } from '@/lib/minecraft-server'
 
 export const runtime = 'nodejs'
 
@@ -111,7 +111,8 @@ export async function PUT(req: NextRequest) {
     if ('players-sleeping-percentage' in sanitized) {
       const raw = parseInt(sanitized['players-sleeping-percentage'], 10)
       const value = Number.isFinite(raw) ? String(Math.max(0, Math.min(100, raw))) : '100'
-      sendCommand(`gamerule playersSleepingPercentage ${value}`)
+      const rule = getServerType() === 'bedrock' ? 'playerssleepingpercentage' : 'playersSleepingPercentage'
+      sendCommand(`gamerule ${rule} ${value}`)
     }
   }
 

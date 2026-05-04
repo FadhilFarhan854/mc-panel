@@ -41,6 +41,7 @@ const BEDROCK_SETTINGS = [
   { key: 'show-coordinates', label: 'Show Coordinates in HUD', type: 'boolean' },
   { key: 'keep-inventory', label: 'Keep Inventory on Death', type: 'boolean' },
   { key: 'disable-custom-skins', label: 'Only Allow Trusted Skins', type: 'boolean', note: 'true = hanya skin Marketplace · false = semua skin custom diizinkan' },
+  { key: 'players-sleeping-percentage', label: 'Players Sleeping Percentage (% required to skip night)', type: 'number', note: 'Default: 100. Applied as gamerule when server is online.' },
 ] as const
 
 export default function ConfigPage() {
