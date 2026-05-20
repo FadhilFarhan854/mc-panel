@@ -27,6 +27,10 @@ ENV HOSTNAME=0.0.0.0
 # Default Minecraft directory (overridable via docker-compose / env file)
 ENV MINECRAFT_DIR=/opt/minecraft
 
+# Install utilities needed at runtime (unzip for world import)
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Next.js standalone output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static  ./.next/static
