@@ -1,0 +1,17 @@
+services:
+  panel:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3000:3000"       # MC Panel UI
+      - "25565:25565"     # Minecraft Java Edition
+      - "19132:19132/udp" # Minecraft Bedrock Edition
+    volumes:
+      # Minecraft server files — persisted on the host
+      - ./minecraft:/opt/minecraft
+    # Raise the open-file limit so Minecraft doesn't run into ulimit issues
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

@@ -1,0 +1,14 @@
+.git
+node_modules
+.next
+minecraft
+
+# Local env files (actual secrets — never bake into image)
+.env
+.env.local
+.env.*.local
+
+# Dev/editor artifacts
+*.md
+.DS_Store
+Thumbs.db
