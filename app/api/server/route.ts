@@ -8,6 +8,7 @@ export async function GET() {
   return Response.json({
     status: getStatus(),
     serverType: getServerType(),
+    mcVersion: process.env.MINECRAFT_VERSION ?? null,
     recentLogs: logs.slice(-10),
   })
 }

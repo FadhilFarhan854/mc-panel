@@ -22,14 +22,14 @@ const COMMON_SETTINGS = [
   { key: 'simulation-distance', label: 'Simulation Distance (chunks)', type: 'number' },
   { key: 'server-port', label: 'Server Port', type: 'number' },
   { key: 'allow-flight', label: 'Allow Flight', type: 'boolean' },
-  { key: 'white-list', label: 'Enable Whitelist', type: 'boolean' },
-  { key: 'enforce-whitelist', label: 'Enforce Whitelist (kick non-whitelisted players)', type: 'boolean' },
   { key: 'force-gamemode', label: 'Force Gamemode on Join', type: 'boolean' },
   { key: 'spawn-protection', label: 'Spawn Protection Radius (blocks)', type: 'number' },
   { key: 'player-idle-timeout', label: 'Idle Kick Timeout (minutes, 0 = off)', type: 'number' },
 ] as const
 
 const JAVA_SETTINGS = [
+  { key: 'white-list', label: 'Enable Whitelist', type: 'boolean' },
+  { key: 'enforce-whitelist', label: 'Enforce Whitelist (kick non-whitelisted players)', type: 'boolean' },
   { key: 'resource-pack', label: 'Resource Pack URL', type: 'text', note: 'Direct download URL (.zip)' },
   { key: 'resource-pack-sha1', label: 'Resource Pack SHA-1 Hash', type: 'text', note: 'Optional, for integrity check' },
   { key: 'resource-pack-enforce', label: 'Force Resource Pack (kick if declined)', type: 'boolean' },
@@ -38,6 +38,7 @@ const JAVA_SETTINGS = [
 ] as const
 
 const BEDROCK_SETTINGS = [
+  { key: 'allow-list', label: 'Enable Allowlist (Whitelist)', type: 'boolean' },
   { key: 'show-coordinates', label: 'Show Coordinates in HUD', type: 'boolean' },
   { key: 'keep-inventory', label: 'Keep Inventory on Death', type: 'boolean' },
   { key: 'disable-custom-skins', label: 'Only Allow Trusted Skins', type: 'boolean', note: 'true = hanya skin Marketplace · false = semua skin custom diizinkan' },
