@@ -15,11 +15,9 @@ RUN npm run build
 # Uses Debian Bookworm (glibc) so Bedrock binary also works.
 FROM node:22-bookworm-slim AS runner
 
-# Install Java 21 for Minecraft Java Edition.
-# Remove this block if you only use Bedrock.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        openjdk-21-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+# Java Edition: uncomment block below and change base image to eclipse-temurin:21-jre-jammy
+# RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless \
+#     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
