@@ -27,8 +27,14 @@ ENV HOSTNAME=0.0.0.0
 # Default Minecraft directory (overridable via docker-compose / env file)
 ENV MINECRAFT_DIR=/opt/minecraft
 
-# Install utilities needed at runtime (unzip for world import)
-RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+# Install utilities needed at runtime:
+#   unzip      — world import
+#   libcurl4   — required by Bedrock server binary
+#   libatomic1 — required by Bedrock server binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        unzip \
+        libcurl4 \
+        libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Next.js standalone output
