@@ -9,7 +9,7 @@ services:
       - "19132:19132/udp" # Minecraft Bedrock Edition
     volumes:
       # Minecraft server files — persisted on the host
-      - ./minecraft:/opt/minecraft
+      - /opt/minecraft:/opt/minecraft
     # Raise the open-file limit so Minecraft doesn't run into ulimit issues
     ulimits:
       nofile:
