@@ -23,9 +23,14 @@ function parseFormat(raw: string | null): DownloadFormat {
   return 'tar.gz'
 }
 
-function buildZipBuffer(worldsDir: string, name: string): Buffer {
+/**
+ * @param rootInZip  - path prefix inside the archive.
+ *   ''     → files sit at root (required by Minecraft's .mcworld/.mcpack importer)
+ *   name   → files sit inside a named subfolder (standard .zip behaviour)
+ */
+function buildZipBuffer(worldsDir: string, name: string, rootInZip: string): Buffer {
   const zip = new AdmZip()
-  zip.addLocalFolder(path.join(worldsDir, name), name)
+  zip.addLocalFolder(path.join(worldsDir, name), rootInZip)
   return zip.toBuffer()
 }
 
@@ -57,11 +62,14 @@ export async function GET(req: NextRequest, ctx: RouteContext<'/api/worlds/[name
 
   // ── ZIP / MCWORLD / MCPACK ────────────────────────────────────────────────
   if (format === 'zip' || format === 'mcworld' || format === 'mcpack') {
-    const ext = format === 'zip' ? 'zip' : format  // mcworld | mcpack | zip
+    const ext = format === 'zip' ? 'zip' : format
     const filename = `${name}.${ext}`
+    // mcworld/mcpack: Minecraft expects world files at archive root (no subfolder)
+    // zip: conventional subfolder with the world name
+    const rootInZip = format === 'zip' ? name : ''
     let buffer: Buffer
     try {
-      buffer = buildZipBuffer(worldsDir, name)
+      buffer = buildZipBuffer(worldsDir, name, rootInZip)
     } catch (err) {
       console.error('[worlds/download] zip error:', err)
       return Response.json({ success: false, message: 'Failed to create archive' }, { status: 500 })
