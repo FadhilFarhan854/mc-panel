@@ -6,6 +6,8 @@ type ServerStatus = 'offline' | 'starting' | 'online' | 'stopping'
 
 interface ServerInfo {
   status: ServerStatus
+  serverType: 'java' | 'bedrock' | null
+  mcVersion: string | null
   recentLogs: string[]
 }
 
@@ -20,7 +22,7 @@ const STATUS_CONFIG: Record<
 }
 
 export default function DashboardPage() {
-  const [info, setInfo] = useState<ServerInfo>({ status: 'offline', recentLogs: [] })
+  const [info, setInfo] = useState<ServerInfo>({ status: 'offline', serverType: null, mcVersion: null, recentLogs: [] })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -76,6 +78,18 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3 mb-5">
           <span className={`w-3 h-3 rounded-full shrink-0 ${cfg.dotClass}`} />
           <span className={`text-2xl font-bold tracking-widest ${cfg.textClass}`}>{cfg.label}</span>
+          {info.serverType && (
+            <span className="ml-auto flex items-center gap-2">
+              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono uppercase">
+                {info.serverType}
+              </span>
+              {info.mcVersion && (
+                <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                  {info.mcVersion}
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3">

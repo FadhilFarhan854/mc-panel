@@ -114,6 +114,9 @@ export async function PUT(req: NextRequest) {
       const rule = getServerType() === 'bedrock' ? 'playerssleepingpercentage' : 'playersSleepingPercentage'
       sendCommand(`gamerule ${rule} ${value}`)
     }
+    if ('white-list' in sanitized && getServerType() === 'java') {
+      sendCommand(sanitized['white-list'] === 'true' ? 'whitelist on' : 'whitelist off')
+    }
   }
 
   return Response.json({ success: true, message: 'Configuration saved. Restart the server for all changes to take effect.' })
