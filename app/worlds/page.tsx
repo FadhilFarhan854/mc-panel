@@ -8,6 +8,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+type DownloadFormat = 'tar.gz' | 'zip' | 'mcworld' | 'mcpack'
+
 export default function WorldsPage() {
   const [worlds, setWorlds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,7 +17,12 @@ export default function WorldsPage() {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [worldName, setWorldName] = useState('')
+  const [downloadFormats, setDownloadFormats] = useState<Record<string, DownloadFormat>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const getFormat = (world: string): DownloadFormat => downloadFormats[world] ?? 'tar.gz'
+  const setFormat = (world: string, fmt: DownloadFormat) =>
+    setDownloadFormats((prev) => ({ ...prev, [world]: fmt }))
 
   const fetchWorlds = async () => {
     try {
@@ -35,15 +42,18 @@ export default function WorldsPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (!file.name.endsWith('.zip') && !file.name.endsWith('.tar.gz')) {
-      setMessage({ text: 'Only .zip or .tar.gz files are supported', ok: false })
+    const validExts = ['.zip', '.tar.gz', '.mcworld', '.mcpack']
+    if (!validExts.some((ext) => file.name.endsWith(ext))) {
+      setMessage({ text: 'Supported formats: .zip, .tar.gz, .mcworld, .mcpack', ok: false })
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
     setSelectedFile(file)
     // Derive default world name from filename
-    const base = file.name.replace(/\.tar\.gz$/, '').replace(/\.zip$/, '')
+    const base = file.name
+      .replace(/\.tar\.gz$/, '')
+      .replace(/\.(zip|mcworld|mcpack)$/, '')
     setWorldName(base)
     setMessage(null)
   }
@@ -90,7 +100,7 @@ export default function WorldsPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".zip,.tar.gz"
+              accept=".zip,.tar.gz,.mcworld,.mcpack"
               className="hidden"
               onChange={handleFileSelect}
             />
@@ -168,20 +178,32 @@ export default function WorldsPage() {
               className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3"
             >
               <p className="text-zinc-100 text-sm font-medium truncate">{world}</p>
-              <a
-                href={`/api/worlds/${encodeURIComponent(world)}/download`}
-                download
-                className="ml-4 shrink-0 text-emerald-400 hover:text-emerald-300 text-sm transition-colors"
-              >
-                Download
-              </a>
+              <div className="ml-4 shrink-0 flex items-center gap-1">
+                <select
+                  value={getFormat(world)}
+                  onChange={(e) => setFormat(world, e.target.value as DownloadFormat)}
+                  className="bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="tar.gz">.tar.gz</option>
+                  <option value="zip">.zip</option>
+                  <option value="mcworld">.mcworld</option>
+                  <option value="mcpack">.mcpack</option>
+                </select>
+                <a
+                  href={`/api/worlds/${encodeURIComponent(world)}/download?format=${getFormat(world)}`}
+                  download
+                  className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 hover:border-emerald-500 hover:text-emerald-400 text-zinc-300 text-xs rounded-lg transition-colors"
+                >
+                  Download
+                </a>
+              </div>
             </div>
           ))}
         </div>
       )}
 
       <p className="mt-6 text-zinc-600 text-xs">
-        Stop the server before importing a world to avoid data corruption. Supports .zip and .tar.gz archives.
+        Stop the server before importing a world to avoid data corruption. Supports .zip, .tar.gz, .mcworld, and .mcpack archives.
       </p>
     </div>
   )

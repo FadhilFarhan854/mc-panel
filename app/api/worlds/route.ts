@@ -96,12 +96,12 @@ export async function POST(req: NextRequest) {
 
   const f = file as File
   const filename = f.name
-  const isZip = filename.endsWith('.zip')
+  const isZip = filename.endsWith('.zip') || filename.endsWith('.mcworld') || filename.endsWith('.mcpack')
   const isTarGz = filename.endsWith('.tar.gz')
 
   if (!isZip && !isTarGz) {
     return Response.json(
-      { success: false, message: 'Only .zip or .tar.gz files are supported' },
+      { success: false, message: 'Supported formats: .zip, .tar.gz, .mcworld, .mcpack' },
       { status: 400 }
     )
   }
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
     } else if (worldRoot !== tmpExtract) {
       finalName = path.basename(worldRoot)
     } else {
-      finalName = path.basename(filename, isZip ? '.zip' : '.tar.gz')
+      finalName = path.basename(filename).replace(/\.tar\.gz$/, '').replace(/\.(zip|mcworld|mcpack)$/, '')
     }
 
     if (!isSafeWorldName(finalName)) {
