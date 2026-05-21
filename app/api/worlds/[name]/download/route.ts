@@ -66,7 +66,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<'/api/worlds/[name
       console.error('[worlds/download] zip error:', err)
       return Response.json({ success: false, message: 'Failed to create archive' }, { status: 500 })
     }
-    return new Response(buffer, {
+    return new Response(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer, {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${filename}"`,
